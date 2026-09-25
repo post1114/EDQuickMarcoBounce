@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import net.ccbluex.liquidbounce.config.ListValue
 import net.ccbluex.liquidbounce.features.module.Category
 import net.ccbluex.liquidbounce.features.module.Module
+import net.ccbluex.liquidbounce.features.module.modules.combat.ArmorBreaker
 import net.ccbluex.liquidbounce.features.module.modules.combat.AutoArmor
 import net.ccbluex.liquidbounce.utils.block.BlockUtils.isFullBlock
 import net.ccbluex.liquidbounce.utils.client.chat
@@ -56,6 +57,8 @@ object InventoryCleaner : Module("InventoryCleaner", Category.PLAYER) {
     // TODO: max potion, vehicle, ..., stacks?
 
     private val maxFishingRodStacks by int("MaxFishingRodStacks", 1, 1..10).subjective()
+
+    private val maxSwordStacks by int("MaxSwordStacks", 5, 1..36).subjective()
 
     private val mergeStacks by boolean("MergeStacks", true).subjective()
 
@@ -218,6 +221,10 @@ object InventoryCleaner : Module("InventoryCleaner", Category.PLAYER) {
                 }
                 .groupBy { it.value.item }.values
                 .filter { stackGroup ->
+                    // Merging swords would shrink the pool ArmorBreaker cycles through
+                    if (ArmorBreaker.state && stackGroup.first().value.item is ItemSword)
+                        return@filter false
+
                     // Only try to repair groups of items when they contain a useful item that can be repaired
                     // Prevents repairing of items that would get thrown out
                     stackGroup.any { isStackUseful(it.value, stacks, noLimits = true) && it.value.isItemDamaged }
@@ -303,6 +310,10 @@ object InventoryCleaner : Module("InventoryCleaner", Category.PLAYER) {
                         if (!canBeSortedTo(hotbarIndex, repairedItem))
                             continue
 
+                        // Never swap anything into the slot ArmorBreaker is cycling swords in
+                        if (ArmorBreaker.state && hotbarIndex == thePlayer.inventory.currentItem)
+                            continue
+
                         val hotbarStack = stacks.getOrNull(stacks.size - 9 + hotbarIndex)
 
                         // If occupied hotbar slot isn't already sorted or isn't strictly best, sort to it
@@ -338,6 +349,10 @@ object InventoryCleaner : Module("InventoryCleaner", Category.PLAYER) {
             // Check if slot has a valid sorting target
             val isRightType = SORTING_TARGETS[value.get()] ?: continue
 
+            // Never swap anything into the slot ArmorBreaker is cycling swords in
+            if (ArmorBreaker.state && hotbarIndex == thePlayer.inventory.currentItem)
+                continue
+
             // Stop if player violates invopen or nomove checks
             if (!shouldOperate()) return
 
@@ -356,6 +371,10 @@ object InventoryCleaner : Module("InventoryCleaner", Category.PLAYER) {
 
                 for ((otherIndex, otherStack) in stacks.withIndex()) {
                     if (isTicked(otherIndex))
+                        continue
+
+                    // Don't move the sword ArmorBreaker is currently cycling in the held slot
+                    if (ArmorBreaker.state && otherIndex == 36 + thePlayer.inventory.currentItem)
                         continue
 
                     val otherItem = otherStack?.item
@@ -526,10 +545,18 @@ object InventoryCleaner : Module("InventoryCleaner", Category.PLAYER) {
                     it.durability.toFloat() * it.getEnchantmentLevel(Enchantment.efficiency)
                 }
 
-            is ItemSword ->
+            is ItemSword -> {
+                // ArmorBreaker cycles through swords of varying damage, never treat them as garbage while it's enabled
+                if (ArmorBreaker.state) return true
+
+                val swordStacks = stacks.count { it?.item is ItemSword }
+
+                if (swordStacks <= maxSwordStacks) return true
+
                 hasBestParameters(stack, stacks, entityStacksMap) {
                     it.attackDamage.toFloat()
                 }
+            }
 
             is ItemBow ->
                 hasBestParameters(stack, stacks, entityStacksMap) {

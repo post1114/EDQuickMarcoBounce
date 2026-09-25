@@ -14,6 +14,7 @@ import net.ccbluex.liquidbounce.event.Render2DEvent
 import net.ccbluex.liquidbounce.event.handler
 import net.ccbluex.liquidbounce.features.module.Category
 import net.ccbluex.liquidbounce.features.module.Module
+import net.ccbluex.liquidbounce.features.module.modules.combat.ArmorBreaker
 import net.ccbluex.liquidbounce.features.module.modules.combat.AutoArmor
 import net.ccbluex.liquidbounce.features.module.modules.player.InventoryCleaner
 import net.ccbluex.liquidbounce.features.module.modules.player.InventoryCleaner.canBeSortedTo
@@ -305,6 +306,10 @@ object ChestStealer : Module("ChestStealer", Category.WORLD) {
                 if (!canMerge && InventoryCleaner.handleEvents() && InventoryCleaner.sort) {
                     for (hotbarIndex in 0..8) {
                         if (sortBlacklist[hotbarIndex])
+                            continue
+
+                        // Never sort into the slot ArmorBreaker is cycling swords in
+                        if (ArmorBreaker.state && hotbarIndex == mc.thePlayer.inventory.currentItem)
                             continue
 
                         if (!canBeSortedTo(hotbarIndex, stack.item))
